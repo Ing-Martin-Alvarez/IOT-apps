@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0"
+        />
+        <title>MQTT con JS</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                text-align: center;
+            }
+
+            h1 {
+                color: #333;
+            }
+
+            button {
+                background-color: #3498db;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                cursor: pointer;
+            }
+
+            button.led_off {
+                background-color: #e74c3c;
+            }
+
+            input[type="text"] {
+                padding: 5px;
+            }
+
+            p#output_console {
+                text-align: left;
+                font-family: monospace;
+                margin: 10px;
+            }
+
+            #line-chart {
+                display: block;
+                margin: auto;
+                max-width: 80vw;
+                max-height: 80vh;
+            }
+            body, html {
+                margin: 0;
+                padding: 0;
+                overflow: hidden;
+                height: 100%;
+            }
+
+            #background-container {
+                position: fixed;
+                width: 100%;
+                height: 100%;
+                z-index: -1;
+                background: url('aespa.jpg') no-repeat center center fixed;
+                background-size: cover;
+            }
+            
+            body {
+                overflow-y: auto; /* Añade scroll vertical */
+            }
+
+            #main-panel {
+                display: inline-block; /* Ajusta a tamaño de contenido interno */
+            }
+
+            .panel-container {
+                margin: 10px;
+                padding: 10px;
+                background-color: rgba(255, 255, 255, 0.8);
+                border-radius: 10px;
+                box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+                display: inline-block; /* Ajusta a tamaño de contenido interno */
+            }
+
+            #joke-panel,
+            #title-panel,
+            #chart-chat-panel,
+            #chat-panel,
+            #data-panels,
+            #temperature-panel,
+            #humidity-panel,
+            #counter-panel,
+            #controls-panel {
+                margin-bottom: 10px;
+                padding: 10px;
+                background-color: rgba(255, 255, 255, 0.8);
+                border-radius: 10px;
+                box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            }
+        </style>
+    </head>
+    <body>
+        <div id="background-container"></div>
+        <div id="main-panel">
+            <h1 id="title-panel">BlackPink Panel</h1>
+            <div id="joke-panel">
+                <p id="joke_display">Esperando broma...</p>
+            </div>
+            <div id="controls-panel" style="display: flex; justify-content: space-around;">
+                <button id="toggle" class="led_on">Apagar led</button>
+                <button id="fetch_data" class="led_on">Solicitar datos históricos</button>
+            </div>
+            <div id="data-panels" style="display: flex; justify-content: space-around;">
+                <div id="temperature-panel">
+                    <h2>Temperatura</h2>
+                    <p id="temperature_display">°C</p>
+                    <!-- Agrega contenido relacionado con la temperatura aquí -->
+                </div>
+                <div id="humidity-panel">
+                    <h2>Humedad</h2>
+                    <p id="humedad_display">%</p>
+                    <!-- Agrega contenido relacionado con la humedad aquí -->
+                </div>
+                <div id="counter-panel">
+                    <h2>Contador</h2>
+                    <p id="counter_display">Esperando...</p>
+                </div>
+            </div>
+            <div id="chart-chat-panel" style="display: flex; justify-content: center;">
+                <div id="chart-panel">
+                    <h2>Grafica de Temperatura y Humedad</h2>
+                    <canvas id="line-chart" width="800" height="450"></canvas>
+                </div>
+            </div>
+            <div id="chat-panel">
+                <h2>Chat</h2>
+                <input type="text" id="msgMQTT" style="display: flex; justify-content: center;"/>
+                <p id="output_console"></p>
+            </div>
+        </div>
+    </body>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+        let chart = new Chart(document.getElementById("line-chart"), {
+            type: "line",
+            data: {
+                labels: [1500, 1600, 1700, 1750, 1800, 1850, 1900, 1950, 1999, 2050],
+                datasets: [
+                    {
+                        data: [86, 114, 106, 106, 107, 111, 133, 221, 783, 2478],
+                        label: "Humedad",
+                        borderColor: "#3e95cd",
+                        fill: false,
+                    },
+                    {
+                        data: [282, 350, 411, 502, 635, 809, 947, 1402, 3700, 5267],
+                        label: "Temperatura",
+                        borderColor: "#8e5ea2",
+                        fill: false,
+                    },
+                ],
+            },
+            options: {
+                title: {
+                    display: true,
+                    text: "World population per region (in millions)",
+                },
+            },
+        });
+
+        function updateChart(labels, temperatures, humidities) {
+            chart.data.labels = labels;
+            chart.data.datasets[0].data = temperatures;
+            chart.data.datasets[1].data = humidities;
+            chart.update();
+        }
+    </script>
+    <script src="mqtt.js"></script>
+    <script>
+        let PUB_TOPIC = "monitores/YG";
+        let msgMQTT = document.getElementById("msgMQTT");
+        let output_console = document.getElementById("output_console");
+        msgMQTT.addEventListener("keyup", (e) => {
+            if (e.keyCode === 13) {
+                console.log("Sending:", msgMQTT.value);
+                client.publish(PUB_TOPIC, msgMQTT.value);
+                msgMQTT.value = "";
+            }
+        });
+
+        let toggle = document.getElementById("toggle");
+        toggle.addEventListener("click", (e) => {
+            if (toggle.className == "led_on") {
+                toggle.className = "led_off";
+                toggle.innerHTML = "Encender led";
+                client.publish(PUB_TOPIC, JSON.stringify({ led: 0 }));
+            } else {
+                toggle.className = "led_on";
+                toggle.innerHTML = "Apagar led";
+                client.publish(PUB_TOPIC, JSON.stringify({ led: 1 }));
+            }
+        });
+
+        document.getElementById("fetch_data").addEventListener("click", (e) => {
+            client.publish(
+                PUB_TOPIC,
+                JSON.stringify({
+                  from: "server",
+                  to: "server",//web
+                  action: "GET_DATA",
+                })
+            );
+        });
+
+        /***
+         * Browser
+         * This document explains how to use MQTT over WebSocket with the ws and wss protocols.
+         * EMQX's default port for ws connection is 8083 and for wss connection is 8084.
+         * Note that you need to add a path after the connection address, such as /mqtt.
+         */
+        const url = "wss://v3e23249.ala.us-east-1.emqxsl.com:8084/mqtt";
+
+        // Create an MQTT client instance
+        const options = {
+            // Clean session
+            clean: true,
+            connectTimeout: 4000,
+            // Authentication
+            clientId: "emqxjs_" + Math.random().toString(16).substr(2, 8),
+            username: "web",
+            password: "web",
+        };
+
+        const client = mqtt.connect(url, options);
+
+        client.on("connect", function () {
+            console.log("Connected");
+            // Subscribe to a topic
+            client.subscribe(PUB_TOPIC, function (err) {
+                if (!err) {
+                    // Publish a message to a topic
+                    console.log("Message is published");
+
+                    const initialMessage = {
+                        from: "web",
+                        to: "server",
+                        action: "GET_JOKE"
+                    };
+                    client.publish(PUB_TOPIC, JSON.stringify(initialMessage));
+                }
+            });
+        });
+
+        // Receive messages
+        client.on("message", function (topic, message) {
+            // message is Buffer
+            output_console.innerHTML = message.toString() + "<br>" + output_console.innerHTML;
+            try {
+                let data = JSON.parse(message.toString());
+                console.log("Se pudo")
+                console.log(data['from'] == "server");
+                console.log(data['to'] == "web");
+                console.log(data['action'] == "SEND_JOKE");
+                if (data["from"] == "server" && data["to"] == "web") {
+                        console.log("From server to web")
+                        console.log(data['action'])
+                        console.log(data['action']=='SEND_JOKE')
+                    if (data['action'] == 'SEND_JOKE') {
+                        // Lógica específica para cuando la acción es 'SEND_JOKE'
+                        // Puedes acceder a los datos adicionales con data['data']
+                        document.getElementById('joke_display').innerHTML = data['joke'];
+                        // Puedes hacer algo más con el chiste, mostrarlo en la interfaz de usuario, etc.
+                    }else{
+                        // Lógica común para cuando 'from' es 'server' y 'to' es 'web'
+                        updateChart(data["data"]["labels"], data["data"]["humidities"], data["data"]["temperatures"]); 
+                        document.getElementById('temperature_display').innerHTML = data['temperature'];
+                        document.getElementById('humidity_display').innerHTML = data['humidity'];
+                    }
+                    
+                    } 
+                if(data['from'] == 'ESP32' && data['to'] == 'broadcast' && data['action'] == 'UPDATE_COUNTER'){
+                    document.getElementById('counter_display').innerHTML = data['value'];
+                } 
+                
+            } catch (e) {
+                console.log("No es un JSON");
+                console.log(message.toString());
+            }
+        });
+    </script>
+</html>
